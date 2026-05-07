@@ -1,0 +1,98 @@
+{
+  "task_id": "astro_f2b1",
+  "instruction": "Use the released radial-velocity, activity-indicator, and long-baseline photometric time series together with the original paper PDF to produce a markdown report on the evidence for a nearby Earth-mass planet around a low-mass M dwarf. The report should summarize the planetary interpretation, the slower stellar-variability context, and the habitable-zone implications supported by the released public data and original paper figures.",
+  "input_data": [
+    {
+      "name": "carmenes_rv_timeseries",
+      "path": "input_data/data/carm-rv.dat",
+      "type": "sequence_data",
+      "description": "Released CARMENES-VIS radial-velocity time series for Wolf 1069 with 262 epochs, including BJD, RV, uncertainty, and instrument label."
+    },
+    {
+      "name": "carmenes_activity_timeseries",
+      "path": "input_data/data/carm-act.dat",
+      "type": "sequence_data",
+      "description": "Released CARMENES stellar-activity time series for Wolf 1069, including chromatic index, differential line width, Ca II IRT indices, Halpha, TiO indices, BIS, contrast, and FWHM."
+    },
+    {
+      "name": "photometry_index",
+      "path": "input_data/data/photlist.dat",
+      "type": "parameter_table",
+      "description": "Released index of the 11 public photometric light curves used in the paper, listing instrument, observing span, filter, and file name."
+    },
+    {
+      "name": "photometry_directory",
+      "path": "input_data/data/phot/",
+      "type": "sequence_data",
+      "description": "Released long-term photometric light curves from SuperWASP, MEarth, OSN, and TJO used to constrain the stellar rotation period."
+    },
+    {
+      "name": "cds_schema_readme",
+      "path": "input_data/data/ReadMe",
+      "type": "parameter_table",
+      "description": "CDS schema file describing the released radial-velocity, activity, and photometric tables for Wolf 1069."
+    }
+  ],
+  "answer": [
+    {
+      "type": "text",
+      "content": "The released radial-velocity data support the paper's main discovery claim: Wolf 1069 hosts an Earth-mass planet on a 15.564 +/- 0.015 day orbit. In the preferred model reported by the paper, the signal has a semi-amplitude of 1.07 +/- 0.17 m/s, implying a minimum mass of 1.26 +/- 0.21 Earth masses at 0.0672 +/- 0.0014 au and an incident flux of 0.652 +0.029/-0.027 Earth fluxes.",
+      "path": null,
+      "keywords": [
+        "15.564 day orbit",
+        "1.26 +/- 0.21 Earth masses",
+        "0.0672 au",
+        "0.652 Earth fluxes"
+      ],
+      "weight": 0.4
+    },
+    {
+      "type": "text",
+      "content": "The public photometry and activity data support the interpretation that the dominant stellar variability is much slower than the planet candidate. The paper places the stellar rotation period in the 150-170 day range, with a likely value of 169.3 +3.7/-3.6 days, while the 15.6 day signal remains the shortest strong radial-velocity periodicity and is not identified as the main activity timescale.",
+      "path": null,
+      "keywords": [
+        "150-170 day rotation",
+        "169.3 day likely value",
+        "activity-timescale separation",
+        "15.6 day planet candidate"
+      ],
+      "weight": 0.2
+    },
+    {
+      "type": "image",
+      "content": "Original Figure 1 shows the radial-velocity time series, the preferred model, and the phase-folded 15.6 day signal. It anchors the core detection claim and the quoted semi-amplitude of the planet candidate.",
+      "path": "artifacts/Fig1_rv_detection.png",
+      "keywords": [
+        "Figure 1",
+        "radial-velocity time series",
+        "phase-folded 15.6 day signal",
+        "planet detection"
+      ],
+      "weight": 0.15
+    },
+    {
+      "type": "image",
+      "content": "Original Figure 3 shows the generalized Lomb-Scargle periodograms of the long-term photometric data. It anchors the paper's rotation-period inference by showing power concentrated around the slow-rotation regime rather than at the 15.6 day planet period.",
+      "path": "artifacts/Fig3_photometry_rotation.png",
+      "keywords": [
+        "Figure 3",
+        "photometric periodograms",
+        "slow stellar rotation",
+        "rotation-period inference"
+      ],
+      "weight": 0.13
+    },
+    {
+      "type": "image",
+      "content": "Original Figure 5 shows the radial-velocity periodograms after sequential signal subtraction. It anchors the paper's distinction between the 15.6 day planetary signal and the slower periodicities near 90 and 165 days associated with the broader model comparison.",
+      "path": "artifacts/Fig5_rv_periodograms.png",
+      "keywords": [
+        "Figure 5",
+        "RV periodograms",
+        "15.6 day peak",
+        "90 and 165 day signals"
+      ],
+      "weight": 0.12
+    }
+  ]
+}
