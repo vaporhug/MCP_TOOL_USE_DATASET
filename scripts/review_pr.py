@@ -30,6 +30,7 @@ MAX_PDF_TEXT_CHARS = 40_000
 MAX_TOTAL_PROMPT_CHARS = 240_000
 MAX_MEDIA_BYTES = int(os.getenv("MAX_REVIEW_MEDIA_BYTES", str(25 * 1024 * 1024)))
 REVIEW_COMMENT_MARKER = "<!-- MCP_TOOL_USE_DATA_REVIEW -->"
+REVIEW_SCRIPT_VERSION = "tool-assessment-v1"
 
 TEXT_EXTENSIONS = {
     ".csv",
@@ -61,6 +62,7 @@ REVIEW_SCHEMA: dict[str, Any] = {
         "benchmark_fit",
         "summary",
         "reasoning",
+        "tool_assessment",
         "findings",
         "merge_candidates",
         "todo_items",
@@ -83,6 +85,14 @@ REVIEW_SCHEMA: dict[str, Any] = {
         },
         "summary": {"type": "string"},
         "reasoning": {"type": "string"},
+        "tool_assessment": {
+            "type": "string",
+            "description": (
+                "Explicitly assess whether the provided domain tools are "
+                "sufficient, too weak, too one-shot, or unnecessary for the "
+                "requested workflow. Mention key tool files/functions."
+            ),
+        },
         "findings": {
             "type": "array",
             "items": {
@@ -186,6 +196,17 @@ class MediaAttachment:
     media_base64: str
 
 
+@dataclass(frozen=True)
+class PdfSmokeTestResult:
+    task_id: str
+    model: str
+    target_path: str
+    attachment_path: str | None
+    attachment_mode: str
+    status: str
+    output: str
+
+
 def main() -> int:
     github_token = require_env("GITHUB_TOKEN")
     repo_name = require_env("REPO_NAME")
@@ -217,6 +238,7 @@ def main() -> int:
     llm_models = parse_review_models(os.getenv("LLM_REVIEW_MODELS"))
     client = OpenAI(api_key=llm_api_key, base_url=llm_base_url)
     records = []
+    smoke_results: list[PdfSmokeTestResult] = []
     for target in targets:
         try:
             snapshot = collect_target_snapshot(target, changed_files, head_repo, head_ref)
@@ -235,12 +257,29 @@ def main() -> int:
                 except Exception as exc:
                     record = failed_review_record(target, model, exc)
                 records.append(normalize_record(target, model, record))
+            smoke_results.extend(
+                run_pdf_smoke_tests(client, target, llm_models, media_attachments)
+            )
         except Exception as exc:
             for model in llm_models:
                 record = failed_review_record(target, model, exc)
                 records.append(normalize_record(target, model, record))
+                smoke_results.append(
+                    PdfSmokeTestResult(
+                        task_id=target.task_id,
+                        model=model,
+                        target_path=target.path,
+                        attachment_path=None,
+                        attachment_mode="not_run",
+                        status="failed",
+                        output=(
+                            "PDF smoke test was not run because file collection "
+                            f"failed: {type(exc).__name__}: {exc}"
+                        ),
+                    )
+                )
 
-    post_comment(pr, build_review_comment(pr_number, records, targets))
+    post_comment(pr, build_review_comment(pr_number, records, targets, smoke_results))
     return 0
 
 
@@ -252,8 +291,13 @@ def require_env(name: str) -> str:
 
 
 def parse_review_models(raw: str | None) -> list[str]:
-    models = [item.strip() for item in (raw or "").split(",") if item.strip()]
-    return models or ["gpt-5.5", "claude-opus-4.7"]
+    aliases = {"claude-opus-4.7": "claude-opus-4-7"}
+    models = []
+    for item in (raw or "").split(","):
+        model = item.strip()
+        if model:
+            models.append(aliases.get(model, model))
+    return models or ["gpt-5.5", "claude-opus-4-7"]
 
 
 def detect_task_targets(
@@ -830,9 +874,10 @@ def build_review_prompt(
         Generic source inspection is not a required domain-tool feature here.
         Do not flag missing PDF/image parsing helpers, read_text limitations on
         binary PDFs, or missing structured paper-parameter files when the
-        original target paper itself is included and attached to this review.
-        Instead, evaluate whether the task, expected answer, data, tools, and
-        target paper are mutually consistent.
+        original target paper itself is included in the provided context,
+        extracted PDF text, or multimodal attachment. Instead, evaluate whether
+        the task, expected answer, data, tools, and target paper are mutually
+        consistent.
 
         For tools that are not general enough:
         - If the tool can be naturally split into reusable steps using the
@@ -886,6 +931,11 @@ def build_review_prompt(
         in the evidence strings. Keep the summary short and factual.
         Only report findings that fit the review dimensions above. If an issue
         is outside this scope, ignore it.
+
+        Always fill `tool_assessment`, even when you return no findings.
+        Explicitly state whether the provided domain tools are sufficient for
+        the requested workflow, too weak, too one-shot, or not necessary for the
+        task. Mention the key relevant tool files/functions by path or name.
 
         Put the detailed rationale in `reasoning`. Put concise actionable TODOs
         in `todo_items`; these TODOs will be shown outside the folded detail
@@ -974,7 +1024,7 @@ def render_media_manifest(
 ) -> str:
     lines: list[str] = []
     if attachments:
-        lines.append("Target paper attached as a multimodal `input_image` item:")
+        lines.append("Target paper attached as a multimodal file item:")
         for item in attachments:
             label = "CHANGED" if item.changed else "CONTEXT"
             lines.append(
@@ -996,44 +1046,99 @@ def call_review_model(
     media_attachments: list[MediaAttachment],
     media_omissions: list[str],
 ) -> dict[str, Any]:
-    prompt_with_media = prompt
-    media_manifest = render_media_manifest(media_attachments, media_omissions)
-    if media_manifest:
-        prompt_with_media += (
-            "\n\nMultimodal attachment manifest:\n"
-            f"{media_manifest}\n\n"
-            "Inspect the attached target paper directly when checking source "
-            "alignment, figures, plots, tables, or paper-supported claims. Do "
-            "not claim that the target paper is inaccessible unless the manifest "
-            "says it was omitted or the model cannot parse it. Do not recommend "
-            "adding PDF extraction tools or structured paper-parameter files "
-            "solely to expose information that is already present in this "
-            "attached target paper."
-        )
+    if model_uses_text_only_review(model):
+        media_attachments = []
 
-    try:
-        response = call_responses_model(
-            client,
-            model,
-            prompt_with_media,
-            media_attachments,
-            json_mode=True,
+    prompt_with_media = append_media_manifest(
+        prompt,
+        media_attachments,
+        media_omissions,
+    )
+    prompt_without_media = append_text_only_fallback_note(
+        prompt,
+        media_attachments,
+        media_omissions,
+    )
+
+    response: Any | None = None
+    for attachment_mode, json_mode in review_call_attempts(media_attachments):
+        attempt_prompt = (
+            prompt_without_media if attachment_mode == "none" else prompt_with_media
         )
-    except Exception:
         try:
             response = call_responses_model(
                 client,
                 model,
-                prompt_with_media,
-                media_attachments,
-                json_mode=False,
+                attempt_prompt,
+                media_attachments if attachment_mode != "none" else [],
+                json_mode=json_mode,
+                attachment_mode=attachment_mode,
             )
+            break
         except Exception:
-            if media_attachments:
-                raise
-            response = call_chat_model(client, model, prompt_with_media)
+            response = None
+
+    if response is None:
+        response = call_chat_model(client, model, prompt_without_media)
 
     return parse_json_response(extract_response_text(response))
+
+
+def append_media_manifest(
+    prompt: str,
+    media_attachments: list[MediaAttachment],
+    media_omissions: list[str],
+) -> str:
+    media_manifest = render_media_manifest(media_attachments, media_omissions)
+    if not media_manifest:
+        return prompt
+    return (
+        prompt
+        + "\n\nMultimodal attachment manifest:\n"
+        + media_manifest
+        + "\n\n"
+        + "Inspect the attached target paper directly when checking source "
+        + "alignment, figures, plots, tables, or paper-supported claims. Do "
+        + "not claim that the target paper is inaccessible unless the manifest "
+        + "says it was omitted or the model cannot parse it. Do not recommend "
+        + "adding PDF extraction tools or structured paper-parameter files "
+        + "solely to expose information that is already present in this "
+        + "attached target paper."
+    )
+
+
+def append_text_only_fallback_note(
+    prompt: str,
+    media_attachments: list[MediaAttachment],
+    media_omissions: list[str],
+) -> str:
+    if not media_attachments and not media_omissions:
+        return prompt
+    media_manifest = render_media_manifest([], media_omissions)
+    note = (
+        "\n\nMultimodal attachment manifest:\n"
+        "No target paper is attached in this fallback model request. Use the "
+        "extracted PDF text and file context included above; do not fail the "
+        "review solely because the fallback request is text-only."
+    )
+    if media_manifest:
+        note += "\n\n" + media_manifest
+    return prompt + note
+
+
+def review_call_attempts(
+    media_attachments: list[MediaAttachment],
+) -> list[tuple[str, bool]]:
+    if media_attachments:
+        return [
+            ("file", True),
+            ("file", False),
+            ("relay_image", True),
+            ("relay_image", False),
+            ("none", True),
+            ("none", False),
+        ]
+    return [("none", True), ("none", False)]
 
 
 def call_responses_model(
@@ -1042,6 +1147,7 @@ def call_responses_model(
     prompt: str,
     media_attachments: list[MediaAttachment],
     json_mode: bool,
+    attachment_mode: str,
 ) -> Any:
     content: list[dict[str, Any]] = [
         {
@@ -1060,22 +1166,32 @@ def call_responses_model(
                 ),
             }
         )
-        content.append(
-            {
-                "type": "input_image",
-                "image_base64": item.media_base64,
-                "mime_type": item.mime_type,
-            }
-        )
+        content.append(media_content_item(item, attachment_mode))
 
     kwargs: dict[str, Any] = {
         "model": model,
         "input": [{"role": "user", "content": content}],
-        "temperature": 0.3,
     }
+    add_temperature_if_supported(kwargs, model)
     if json_mode:
         kwargs["text"] = {"format": {"type": "json_object"}}
     return client.responses.create(**kwargs)
+
+
+def media_content_item(item: MediaAttachment, attachment_mode: str) -> dict[str, Any]:
+    if attachment_mode == "file":
+        return {
+            "type": "input_file",
+            "filename": PurePosixPath(item.path).name,
+            "file_data": f"data:{item.mime_type};base64,{item.media_base64}",
+        }
+    if attachment_mode == "relay_image":
+        return {
+            "type": "input_image",
+            "image_base64": item.media_base64,
+            "mime_type": item.mime_type,
+        }
+    raise ValueError(f"Unsupported attachment mode: {attachment_mode}")
 
 
 def call_chat_model(client: OpenAI, model: str, prompt: str) -> Any:
@@ -1087,19 +1203,119 @@ def call_chat_model(client: OpenAI, model: str, prompt: str) -> Any:
         {"role": "user", "content": prompt},
     ]
     try:
-        response = client.chat.completions.create(
-            model=model,
-            messages=messages,
-            temperature=0.3,
-            response_format={"type": "json_object"},
-        )
+        kwargs: dict[str, Any] = {
+            "model": model,
+            "messages": messages,
+            "response_format": {"type": "json_object"},
+        }
+        add_temperature_if_supported(kwargs, model)
+        response = client.chat.completions.create(**kwargs)
     except Exception:
-        response = client.chat.completions.create(
-            model=model,
-            messages=messages,
-            temperature=0.3,
-        )
+        kwargs = {"model": model, "messages": messages}
+        add_temperature_if_supported(kwargs, model)
+        response = client.chat.completions.create(**kwargs)
     return response
+
+
+def add_temperature_if_supported(kwargs: dict[str, Any], model: str) -> None:
+    if model_supports_temperature(model):
+        kwargs["temperature"] = 0.3
+
+
+def model_supports_temperature(model: str) -> bool:
+    lowered = model.lower()
+    return "claude" not in lowered and "anthropic" not in lowered
+
+
+def model_uses_text_only_review(model: str) -> bool:
+    return not model_supports_temperature(model)
+
+
+def run_pdf_smoke_tests(
+    client: OpenAI,
+    target: TaskTarget,
+    models: list[str],
+    media_attachments: list[MediaAttachment],
+) -> list[PdfSmokeTestResult]:
+    if not media_attachments:
+        return [
+            PdfSmokeTestResult(
+                task_id=target.task_id,
+                model=model,
+                target_path=target.path,
+                attachment_path=None,
+                attachment_mode="not_run",
+                status="failed",
+                output="No target.pdf attachment was available for the PDF smoke test.",
+            )
+            for model in models
+        ]
+
+    attachment = media_attachments[0]
+    results = []
+    for model in models:
+        if model_uses_text_only_review(model):
+            continue
+        results.append(call_pdf_smoke_test(client, target, model, attachment))
+    return results
+
+
+def call_pdf_smoke_test(
+    client: OpenAI,
+    target: TaskTarget,
+    model: str,
+    attachment: MediaAttachment,
+) -> PdfSmokeTestResult:
+    errors = []
+    for attachment_mode in ("file", "relay_image"):
+        try:
+            response = call_pdf_smoke_model(client, model, attachment, attachment_mode)
+            return PdfSmokeTestResult(
+                task_id=target.task_id,
+                model=model,
+                target_path=target.path,
+                attachment_path=attachment.path,
+                attachment_mode=attachment_mode,
+                status="ok",
+                output=extract_response_text(response).strip(),
+            )
+        except Exception as exc:
+            errors.append(f"{attachment_mode}: {type(exc).__name__}: {exc}")
+
+    return PdfSmokeTestResult(
+        task_id=target.task_id,
+        model=model,
+        target_path=target.path,
+        attachment_path=attachment.path,
+        attachment_mode="failed",
+        status="failed",
+        output="PDF attachment smoke test failed for all attachment modes:\n"
+        + "\n".join(f"- {error}" for error in errors),
+    )
+
+
+def call_pdf_smoke_model(
+    client: OpenAI,
+    model: str,
+    attachment: MediaAttachment,
+    attachment_mode: str,
+) -> Any:
+    content = [
+        {
+            "type": "input_text",
+            "text": (
+                "Read only the attached PDF. Translate the paper abstract into "
+                "Chinese. If you cannot access or read the attached PDF, say so "
+                "explicitly and briefly."
+            ),
+        },
+        media_content_item(attachment, attachment_mode),
+    ]
+    kwargs = {
+        "model": model,
+        "input": [{"role": "user", "content": content}],
+    }
+    return client.responses.create(**kwargs)
 
 
 def extract_response_text(response: Any) -> str:
@@ -1174,6 +1390,7 @@ def failed_review_record(target: TaskTarget, model: str, exc: BaseException) -> 
         "benchmark_fit": "poor",
         "summary": f"Automated review failed: {type(exc).__name__}: {exc}",
         "reasoning": "The reviewer could not complete because the model call or file collection failed.",
+        "tool_assessment": "Tool assessment was not produced because the automated review failed before completion.",
         "findings": [
             {
                 "severity": "high",
@@ -1200,6 +1417,7 @@ def normalize_record(target: TaskTarget, model: str, record: dict[str, Any]) -> 
         "benchmark_fit": str(record.get("benchmark_fit") or "poor"),
         "summary": str(record.get("summary") or ""),
         "reasoning": str(record.get("reasoning") or ""),
+        "tool_assessment": str(record.get("tool_assessment") or ""),
         "findings": findings,
         "merge_candidates": (
             record.get("merge_candidates")
@@ -1218,7 +1436,21 @@ def normalize_record(target: TaskTarget, model: str, record: dict[str, Any]) -> 
         normalized["overall_status"] = "needs_major_rework"
     if normalized["benchmark_fit"] not in {"good", "borderline", "poor"}:
         normalized["benchmark_fit"] = "poor"
+    if not normalized["tool_assessment"]:
+        normalized["tool_assessment"] = derive_tool_assessment(record)
     return normalized
+
+
+def derive_tool_assessment(record: dict[str, Any]) -> str:
+    summary = str(record.get("summary") or "").strip()
+    reasoning = str(record.get("reasoning") or "").strip()
+    combined = " ".join(part for part in [summary, reasoning] if part)
+    if combined:
+        return (
+            "No separate tool_assessment field was returned. Tool-related "
+            f"context from the model response: {combined}"
+        )
+    return "No tool assessment was returned by the model."
 
 
 def derive_todos(findings: list[dict[str, Any]]) -> list[str]:
@@ -1237,10 +1469,13 @@ def build_review_comment(
     pr_number: int,
     records: list[dict[str, Any]],
     targets: list[TaskTarget],
+    smoke_results: list[PdfSmokeTestResult],
 ) -> str:
     lines = [
         REVIEW_COMMENT_MARKER,
         f"## MCP Tool Use Data Review for PR #{pr_number}",
+        "",
+        f"Reviewer script version: `{REVIEW_SCRIPT_VERSION}`",
         "",
         "| Task | Model | Target | Status | Fit | High | Medium | Low | Summary |",
         "| --- | --- | --- | --- | --- | ---: | ---: | ---: | --- |",
@@ -1263,6 +1498,8 @@ def build_review_comment(
             )
         )
 
+    append_pdf_smoke_test_section(lines, smoke_results)
+
     for record in records:
         lines.extend(["", f"### {record['task_id']} / `{escape_md(record['model'])}`", ""])
         lines.append("**TODO**")
@@ -1272,6 +1509,15 @@ def build_review_comment(
                 lines.append(f"- {escape_md(str(item))}")
         else:
             lines.append("- No TODOs returned.")
+        if record.get("tool_assessment"):
+            lines.extend(
+                [
+                    "",
+                    "**Tool Assessment**",
+                    "",
+                    escape_md(str(record["tool_assessment"])),
+                ]
+            )
         lines.extend(["", "<details>", "<summary>Reasoning and evidence</summary>", ""])
         if record.get("reasoning"):
             lines.extend(["**Reasoning**", "", escape_md(str(record["reasoning"])), ""])
@@ -1315,6 +1561,43 @@ def build_review_comment(
     return "\n".join(lines)
 
 
+def append_pdf_smoke_test_section(
+    lines: list[str],
+    smoke_results: list[PdfSmokeTestResult],
+) -> None:
+    if not smoke_results:
+        return
+    lines.extend(
+        [
+            "",
+            "## Temporary PDF Attachment Smoke Tests",
+            "",
+            "This extra GPT model call is temporary and is not part of the data review score.",
+        ]
+    )
+    for result in smoke_results:
+        lines.extend(
+            [
+                "",
+                f"### PDF smoke test: {escape_md(result.task_id)} / `{escape_md(result.model)}`",
+                "",
+                f"- Status: `{escape_md(result.status)}`",
+                f"- Attachment mode: `{escape_md(result.attachment_mode)}`",
+                f"- Target: `{escape_md(result.target_path)}`",
+                f"- Attachment: `{escape_md(result.attachment_path or '(none)')}`",
+                "",
+                "<details>",
+                "<summary>Translated abstract smoke-test output</summary>",
+                "",
+                "```text",
+                trim_comment_text(result.output, 6_000),
+                "```",
+                "",
+                "</details>",
+            ]
+        )
+
+
 def build_no_target_comment(pr_number: int, changed_files: list[ChangedFile]) -> str:
     changed = "\n".join(f"- {item.status}: `{item.path}`" for item in changed_files[:100])
     return "\n".join(
@@ -1343,6 +1626,12 @@ def severity_counts(findings: list[dict[str, Any]]) -> dict[str, int]:
 
 def escape_md(text: str) -> str:
     return text.replace("|", "\\|").replace("\n", " ").strip()
+
+
+def trim_comment_text(text: str, limit: int) -> str:
+    if len(text) <= limit:
+        return text
+    return text[:limit] + "\n\n...[truncated]..."
 
 
 def post_comment(pr: Any, body: str) -> None:
