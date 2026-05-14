@@ -1,0 +1,159 @@
+J/A+A/670/A84     Wolf 1069 RV and stellar activity indices (Kossakowski+, 2023)
+================================================================================
+The CARMENES search for exoplanets around M dwarfs. Wolf 1069 b:
+Earth-mass planet in the habitable zone of a nearby, very low-mass star.
+    Kossakowski D., Kuerster M., Trifonov T., Henning T., Kemmer J.,
+    Caballero J.A., Burn R., Sabotta S., Crouse J.S., Fauchez T.J., Nagel E.,
+    Kaminski A., Herrero E., Rodriguez E., Gonzalez-Alvarez E., Quirrenbach A.,
+    Amado P.J., Ribas I., Reiners A., Aceituno J., Bejar V.J.S., Baroch D.,
+    Bastelberger S.T., Chaturvedi P., Cifuentes C., Dreizler S., Jeffers S.V.,
+    Kopparapu R., Lafarga M., Lopez-Gonzalez M.J., Martin-Ruiz S., Montes D.,
+    Morales J.C., Palle E., Pavlov A., Pedraz S., Perdelwitz V.,
+    Perez-Torres M., Perger M., Reffert S., Rodriguez Lopez C., Schlecker M.,
+    Schoefer P., Schweitzer A., Shan Y., Shields A., Stock S., Wolf E.,
+    Zapatero Osorio M.R., Zechmeister M.
+    <Astron. Astrophys. 670, A84 (2023)>
+    =2023A&A...670A..84K        (SIMBAD/NED BibCode)
+================================================================================
+ADC_Keywords: Stars, double and multiple ; Exoplanets ; Spectroscopy ;
+              Radial velocities ; Optical ; Stars, M-type
+Keywords: methods: data analysis - planetary systems -
+          stars: individual: Wolf 1069 - stars: low-mass -
+          techniques: radial velocities
+
+Abstract:
+    We present the discovery of an Earth-mass planet
+    (M_b_sini=1.36+/-0.21M_{Earth}_) on a 15.6d orbit of a relatively
+    nearby (d~9.6pc) and low-mass (0.167+/-0.011M_{sun}_) M5.0V star, Wolf
+    1069. Sitting at a separation of 0.0672+/-0.0014au away from the host
+    star puts Wolf 1069b in the habitable zone (HZ), receiving an incident
+    flux of S=0.652+/-0.029S_{Earth}_. The planetary signal was detected
+    using telluric-corrected radial-velocity (RV) data from the CARMENES
+    spectrograph, amounting to a total of 262 spectroscopic observations
+    covering almost four years. There are additional long-period signals
+    in the RVs, one of which we attribute to the stellar rotation period.
+    This is possible thanks to our photometric analysis including new,
+    well-sampled monitoring campaigns undergone with the OSN and TJO
+    facilities that supplement archival photometry (i.e., from MEarth and
+    SuperWASP), and this yielded an updated rotational period range of
+    P_rot_=150-170d, with a likely value at 169.3^+3.7^_-3.6_d. The
+    stellar activity indicators provided by the CARMENES spectra likewise
+    demonstrate evidence for the slow rotation period, though not as
+    accurately due to possible factors such as signal aliasing or spot
+    evolution. Our detectability limits indicate that additional planets
+    more massive than one Earth mass with orbital periods of less than 10
+    days can be ruled out, suggesting that perhaps Wolf 1069b had a
+    violent formation history. This planet is also the 6th closest
+    Earth-mass planet situated in the conservative HZ, after Proxima
+    Centauri b, GJ 1061d, Teegarden's Star c, and GJ 1002 b and c. Despite
+    not transiting, Wolf 1069b is nonetheless a very promising target for
+    future three-dimensional climate models to investigate various
+    habitability cases as well as for sub-m/s RV campaigns to search for
+    potential inner sub-Earth-mass planets in order to test planet
+    formation theories.
+
+Description:
+    CARMENES VIS radial-velocity and stellar activity indicator time
+    series of Wolf 1069. These were all processed with serval
+    (Zechmeister et al., 2018A&A...609A..12Z). Photometric time series for
+    Wolf 1069 with the following facilities: SuperWASP, MEarth, OSN, TJO
+
+Objects:
+    ---------------------------------------------------
+       RA   (2000)   DE        Designation(s)
+    ---------------------------------------------------
+    20 26 05.30  +58 34 22.6   Wolf 1069 = GJ  1253
+    ---------------------------------------------------
+
+File Summary:
+--------------------------------------------------------------------------------
+ FileName      Lrecl  Records   Explanations
+--------------------------------------------------------------------------------
+ReadMe            80        .   This file
+carm-act.dat     449      262   CARMENES-VIS stellar activity indicators
+                                 of Wolf 1069
+carm-rv.dat       56      262   CARMENES-VIS radial velocities of Wolf 1069
+                                 (Table D2)
+photlist.dat      78       11   List of light curve files
+phot/*             .       11  *Individual light curves
+--------------------------------------------------------------------------------
+Note on phot/*: Instrument photometry with year (2017, 2019, 2020) and filter
+  if provided (VRI) of Wolf 1069.
+--------------------------------------------------------------------------------
+
+Byte-by-byte Description of file: carm-act.dat
+--------------------------------------------------------------------------------
+   Bytes Format Units       Label     Explanations
+--------------------------------------------------------------------------------
+   1- 13  F13.5 d           BJD       Barycentric Julian date
+  15- 36 F22.17 ---         CRX       Chromatic index (in m/s/Np unit)
+  38- 56 F19.15 ---       e_CRX       Chromatic index uncertainty
+                                       (in m/s/Np unit)
+  58- 79 F22.18 1000m2/s2   dLW       Differential line width
+  81- 99 F19.16 1000m2/s2 e_dLW       Differential line width uncertainty
+ 101-118 F18.16 ---         CAIRT1    CaII-IRT1 index (8498.02) (-15,15)km/s
+ 120-140 F21.19 ---       e_CAIRT1    CaII-IRT1 index uncertainty
+ 142-159 F18.16 ---         CAIRT2    CaII-IRT2 index (8542.09) (-15,15)km/s
+ 161-181 F21.19 ---       e_CAIRT2    CaII-IRT2 index uncertainty
+ 183-200 F18.16 ---         CAIRT3    CaII-IRT3 index (8662.14) (-15,15)km/s
+ 202-222 F21.19 ---       e_CAIRT3    CaII-IRT3 index uncertainty
+ 224-241 F18.16 ---         Halpha    H{alpha} index
+ 243-263 F21.19 ---       e_Halpha    H{alpha} index uncertainty
+ 265-274  F10.8 ---         TiO7050   Photospheric TiO absorption band index
+                                       at 7050{AA}
+ 276-296 F21.19 ---       e_TiO7050   Photospheric TiO absorption band index
+                                       at 7050{AA} uncertainty
+ 298-307  F10.8 ---         TiO8430   Photospheric TiO absorption band index
+                                       at 8430{AA} index
+ 309-329 F21.19 ---       e_TiO8430   Photospheric TiO absorption band index
+                                       at 8430{AA} index uncertainty
+ 331-340  F10.8 ---         TiO8860   Photospheric TiO absorption band index
+                                       at 8860{AA} index
+ 342-362 F21.19 ---       e_TiO8860   Photospheric TiO absorption band index
+                                       at 8860{AA} index uncertainty
+ 364-384 F21.17 m/s         BIS       CCF bisector velocity span
+ 386-404 F19.16 m/s       e_BIS       CCF Bisector velocity span uncertainty
+ 406-415  F10.8 %           CTR       CCF contrast
+ 417-426  F10.8 %         e_CTR       CCF contrast uncertainty
+ 428-438  F11.8 km/s        FWHM      CCF full width at half maximum
+ 440-449  F10.8 km/s      e_FWHM      CCF full width at half maximum uncertainty
+--------------------------------------------------------------------------------
+
+Byte-by-byte Description of file: carm-rv.dat
+--------------------------------------------------------------------------------
+   Bytes Format Units   Label     Explanations
+--------------------------------------------------------------------------------
+   1- 18 F18.10 d       BJD       Barycentric Julian date
+  20- 33 F14.10 m/s     RV        Radial velocity
+  35- 47 F13.10 m/s   e_RV        Radial velocity uncertainty
+  49- 56  A8    ---     Inst      Instrument
+--------------------------------------------------------------------------------
+
+Byte-by-byte Description of file: photlist.dat
+--------------------------------------------------------------------------------
+   Bytes Format Units   Label     Explanations
+--------------------------------------------------------------------------------
+   1- 12  A12   ---     Inst      Instrument
+  14- 23  A10   ---     Date1     Beginning date of observation
+      24  A1    ---     ---       [-]
+  25- 34  A10   ---     Date2     Ending date of observation
+  36- 44  A9    ---     Filter    Filter
+  46- 78  A33   ---     FileName  Name of the file with photometry
+                                   in subdirectory phot
+--------------------------------------------------------------------------------
+
+Byte-by-byte Description of file: phot/*
+--------------------------------------------------------------------------------
+   Bytes Format Units     Label     Explanations
+--------------------------------------------------------------------------------
+   1- 18 F18.10 d         BJD       Barycentric Julian date
+  20- 37 F18.16 ---       Flux      Normalized flux
+  39- 60 F22.20 ---     e_Flux      Normalized flux uncertainty
+  62- 73  A12   ---       Inst      Instrument
+--------------------------------------------------------------------------------
+
+Acknowledgements:
+   Diana Kossakowski, diana.kossakowski(at)gmail.com
+
+================================================================================
+(End)  Diana Kossakowski [MPIA, Germany], Patricia Vannier [CDS]     26-Jan-2023
